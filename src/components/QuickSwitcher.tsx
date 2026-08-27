@@ -41,6 +41,11 @@ function persistQuickFilters(filters: QuickFilters) {
 }
 
 function compareRecent(left: VaultRecord, right: VaultRecord) {
+  // A vault that is actually open is the most useful target in a quick
+  // switcher. Among open vaults (and then among closed vaults), retain the
+  // most-recently-opened ordering. The backend keeps this timestamp monotonic
+  // across registry refreshes.
+  if (left.isOpen !== right.isOpen) return left.isOpen ? -1 : 1;
   const leftOpened = left.lastOpened ?? Number.NEGATIVE_INFINITY;
   const rightOpened = right.lastOpened ?? Number.NEGATIVE_INFINITY;
   if (rightOpened !== leftOpened) return rightOpened - leftOpened;
@@ -170,6 +175,11 @@ export function QuickSwitcher({ standalone = false }: { standalone?: boolean }) 
       .sort(compareRecent);
   }, [filters.vaults, query, vaults]);
 
+  const availableVaultCount = useMemo(
+    () => vaults.filter((vault) => !vault.isTemplate && !vault.hidden && !vault.archived && vault.health === 'healthy').length,
+    [vaults],
+  );
+
   const results = useMemo<ResultItem[]>(() => {
     const noteResults = filters.notes
       ? notes.map((note) => {
@@ -251,7 +261,7 @@ export function QuickSwitcher({ standalone = false }: { standalone?: boolean }) 
           aria-label="搜索仓库或笔记标题"
         />
         <div className="quick-filters" aria-label="搜索类型">
-          <button type="button" className={`quick-filter-button ${filters.vaults ? 'is-active' : ''}`} aria-pressed={filters.vaults} onClick={() => toggleFilter('vaults')}>仓库</button>
+          <button type="button" className={`quick-filter-button ${filters.vaults ? 'is-active' : ''}`} aria-pressed={filters.vaults} onClick={() => toggleFilter('vaults')} aria-label={`仓库，共 ${availableVaultCount} 个`}>仓库 <span className="quick-filter-count">{availableVaultCount}</span></button>
           <button type="button" className={`quick-filter-button ${filters.notes ? 'is-active' : ''}`} aria-pressed={filters.notes} onClick={() => toggleFilter('notes')}>笔记</button>
         </div>
         <button type="button" onClick={close} aria-label="关闭"><X size={17} /></button>

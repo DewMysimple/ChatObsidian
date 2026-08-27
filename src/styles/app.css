@@ -382,6 +382,7 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; margin:
 .quick-search .quick-filter-button { width: auto; height: auto; border-radius: 999px; }
 .quick-filter-button:hover { border-color: var(--border-strong); color: var(--text); }
 .quick-filter-button.is-active { border-color: color-mix(in srgb, var(--accent) 38%, var(--border)); background: var(--accent-soft); color: var(--accent); }
+.quick-filter-count { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; margin-left: 3px; padding: 0 4px; border-radius: 999px; background: color-mix(in srgb, currentColor 12%, transparent); font-family: var(--font-mono); font-size: 9px; line-height: 1; }
 .quick-results { overflow: auto; padding: 7px; }
 .quick-results-virtual { position: relative; }
 .quick-result { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto auto 18px; align-items: center; gap: 10px; width: 100%; min-height: 53px; padding: 6px 10px; border: 0; border-radius: 9px; background: transparent; cursor: pointer; text-align: left; }

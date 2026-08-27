@@ -60,7 +60,11 @@ pub fn refresh_registered_metadata(connection: &Connection) -> AppResult<()> {
         updated.name = name.clone();
         updated.display_name = inherited_display_name(Some(previous), &name);
         updated.group_name = inherited_group_name(Some(previous), &group);
-        updated.last_opened = registered.ts.or(previous.last_opened);
+        // `obsidian.json.ts` can lag behind a local open event that we just
+        // recorded. Never let a registry refresh move the user's recent
+        // timestamp backwards, otherwise the quick switcher loses its
+        // recently-opened ordering after every refresh.
+        updated.last_opened = merge_last_opened(registered.ts, previous.last_opened);
         // The registry's `open` bit is a historical hint and can remain true
         // after a window has closed. Runtime status is refreshed from actual
         // Obsidian windows immediately after this metadata pass.
@@ -313,9 +317,10 @@ pub fn scan(connection: &mut Connection, preferences: &AppPreferences) -> AppRes
             archived: previous.is_some_and(|vault| vault.archived),
             order_index,
             note_count: previous.map(|vault| vault.note_count).unwrap_or(0),
-            last_opened: found
-                .last_opened
-                .or_else(|| previous.and_then(|vault| vault.last_opened)),
+            last_opened: merge_last_opened(
+                found.last_opened,
+                previous.and_then(|vault| vault.last_opened),
+            ),
             is_open: found.is_open,
             health: if !exists {
                 "missing"
@@ -386,6 +391,14 @@ fn inherited_display_name(previous: Option<&VaultRecord>, directory_name: &str) 
             }
         })
         .unwrap_or_else(|| directory_name.to_string())
+}
+
+fn merge_last_opened(registry_timestamp: Option<i64>, catalog_timestamp: Option<i64>) -> Option<i64> {
+    match (registry_timestamp, catalog_timestamp) {
+        (Some(registry), Some(catalog)) => Some(registry.max(catalog)),
+        (Some(timestamp), None) | (None, Some(timestamp)) => Some(timestamp),
+        (None, None) => None,
+    }
 }
 
 fn inherited_group_name(previous: Option<&VaultRecord>, parent_name: &str) -> String {
@@ -572,6 +585,13 @@ mod tests {
             "My Group"
         );
         assert_eq!(inherited_group_name(Some(&inherited), "Renamed"), "Renamed");
+    }
+
+    #[test]
+    fn registry_timestamp_cannot_erase_a_newer_local_open() {
+        assert_eq!(merge_last_opened(Some(100), Some(200)), Some(200));
+        assert_eq!(merge_last_opened(Some(300), Some(200)), Some(300));
+        assert_eq!(merge_last_opened(None, Some(200)), Some(200));
     }
 
     #[test]
