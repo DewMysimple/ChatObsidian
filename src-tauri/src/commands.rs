@@ -40,6 +40,10 @@ pub async fn get_dashboard(app: AppHandle) -> AppResult<DashboardData> {
             // file and never rebuilds the note index or configuration hashes.
             let _ = vaults::refresh_registered_metadata(&connection);
         }
+        {
+            let connection = state.db.lock().map_err(|_| message("数据库锁已损坏"))?;
+            vaults::refresh_runtime_status(&connection)?;
+        }
         let (vaults, groups, operations) = {
             let connection = state.db.lock().map_err(|_| message("数据库锁已损坏"))?;
             (
@@ -73,7 +77,52 @@ pub async fn scan_vaults(app: AppHandle) -> AppResult<ScanResult> {
             .map_err(|_| message("偏好设置锁已损坏"))?
             .clone();
         let mut connection = state.db.lock().map_err(|_| message("数据库锁已损坏"))?;
-        vaults::scan(&mut connection, &preferences)
+        let mut result = vaults::scan(&mut connection, &preferences)?;
+        vaults::refresh_runtime_status(&connection)?;
+        result.vaults = db::list_vaults(&connection)?;
+        result.groups = db::list_groups(&connection)?;
+        Ok(result)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn refresh_quick_switcher(
+    app: AppHandle,
+    refresh_notes: bool,
+) -> AppResult<QuickSwitcherRefresh> {
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let mut connection = state.db.lock().map_err(|_| message("数据库锁已损坏"))?;
+        let preferences = state
+            .preferences
+            .lock()
+            .map_err(|_| message("偏好设置锁已损坏"))?
+            .clone();
+
+        // Registry metadata is cheap and picks up directory/display-name changes.
+        // A missing or temporarily locked registry must not make the quick
+        // switcher unusable; the catalog and real window state still work.
+        let _ = vaults::refresh_registered_metadata(&connection);
+        if refresh_notes {
+            let _ = vaults::refresh_scan_root_metadata(&connection, &preferences);
+        }
+        vaults::refresh_runtime_status(&connection)?;
+        let indexed_notes = if refresh_notes {
+            vaults::refresh_note_index(&mut connection)?
+        } else {
+            db::list_vaults(&connection)?
+                .into_iter()
+                .map(|vault| vault.note_count.max(0) as usize)
+                .sum()
+        };
+        let vaults = db::list_vaults(&connection)?;
+        Ok(QuickSwitcherRefresh {
+            vaults,
+            groups: db::list_groups(&connection)?,
+            indexed_notes,
+            refreshed_at: crate::util::now_millis(),
+        })
     })
     .await
 }

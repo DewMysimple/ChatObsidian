@@ -65,6 +65,13 @@ export interface NoteIndexEntry {
   modifiedAt: number;
 }
 
+export interface QuickSwitcherRefresh {
+  vaults: VaultRecord[];
+  groups: VaultGroup[];
+  indexedNotes: number;
+  refreshedAt: number;
+}
+
 export interface JsonChange {
   path: string;
   before: string | null;

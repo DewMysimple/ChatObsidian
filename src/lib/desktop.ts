@@ -8,6 +8,7 @@ import type {
   DashboardData,
   NoteIndexEntry,
   OperationRecord,
+  QuickSwitcherRefresh,
   ReorderVaultsInput,
   ReorderGroupsInput,
   ScanResult,
@@ -41,7 +42,16 @@ async function mockCall<T>(command: string, args: Record<string, unknown>): Prom
       } as T;
     case 'search_notes': {
       const query = String(args.query ?? '').toLowerCase();
-      return mockNotes.filter((note) => `${note.title} ${note.relativePath}`.toLowerCase().includes(query)) as T;
+      return mockNotes.filter((note) => note.title.toLowerCase().includes(query)) as T;
+    }
+    case 'refresh_quick_switcher': {
+      const refreshNotes = Boolean(args.refreshNotes);
+      return {
+        vaults: structuredClone(mockDashboard.vaults),
+        groups: structuredClone(mockDashboard.groups),
+        indexedNotes: refreshNotes ? 6127 : mockDashboard.vaults.reduce((total, vault) => total + vault.noteCount, 0),
+        refreshedAt: Date.now(),
+      } as T;
     }
     case 'list_scripts':
       return mockScripts as T;
@@ -105,6 +115,8 @@ export const desktop = {
   forceCloseAndOpen: (vaultId: string, relativePath?: string, mode: OpenMode = 'configured') =>
     call<OpenVaultResult>('force_close_and_open', { vaultId, relativePath: relativePath ?? null, mode }),
   searchNotes: (query: string, limit = 40) => call<NoteIndexEntry[]>('search_notes', { query, limit }),
+  refreshQuickSwitcher: (refreshNotes = false) =>
+    call<QuickSwitcherRefresh>('refresh_quick_switcher', { refreshNotes }),
   computeConfigDiff: (plan: SyncPlan) => call<ConfigDiff>('compute_config_diff', { plan }),
   applySync: (plan: SyncPlan) => call<OperationRecord>('apply_sync', { plan }),
   rollbackOperation: (operationId: string) => call<OperationRecord>('rollback_operation', { operationId }),

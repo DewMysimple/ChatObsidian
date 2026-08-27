@@ -120,6 +120,15 @@ pub struct NoteIndexEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct QuickSwitcherRefresh {
+    pub vaults: Vec<VaultRecord>,
+    pub groups: Vec<VaultGroup>,
+    pub indexed_notes: usize,
+    pub refreshed_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct JsonChange {
     pub path: String,
     pub before: Option<String>,

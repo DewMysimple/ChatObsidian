@@ -188,6 +188,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_dashboard,
             commands::scan_vaults,
+            commands::refresh_quick_switcher,
             commands::update_vault,
             commands::reorder_vaults,
             commands::reorder_groups,

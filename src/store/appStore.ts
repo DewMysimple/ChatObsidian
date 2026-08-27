@@ -37,6 +37,7 @@ interface AppState {
   setPreferences: (preferences: AppPreferences) => void;
   showToast: (toast: ToastState | null) => void;
   load: () => Promise<void>;
+  refreshQuickSwitcher: (refreshNotes?: boolean) => Promise<void>;
   scan: () => Promise<void>;
   patchVault: (id: string, patch: Partial<VaultRecord>) => Promise<void>;
   reorderGroup: (groupName: string, vaultIds: string[]) => Promise<void>;
@@ -44,7 +45,9 @@ interface AppState {
   setPendingChange: (notice: ConfigChangeNotice | null) => void;
 }
 
-export const useAppStore = create<AppState>((set, get) => ({
+export const useAppStore = create<AppState>((set, get) => {
+  let quickRefreshRevision = 0;
+  return ({
   view: 'vaults',
   vaults: [],
   groups: [],
@@ -75,6 +78,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         toast: { tone: 'danger', message: `无法加载本地数据：${String(error)}` },
       });
     }
+  },
+  refreshQuickSwitcher: async (refreshNotes = false) => {
+    const revision = ++quickRefreshRevision;
+    const result = await desktop.refreshQuickSwitcher(refreshNotes);
+    if (revision !== quickRefreshRevision) return;
+    set({ vaults: result.vaults, groups: result.groups, loading: false });
   },
   scan: async () => {
     set({ scanning: true });
@@ -128,4 +137,5 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ groups: before, toast: { tone: 'danger', message: `保存分组排序失败：${String(error)}` } });
     }
   },
-}));
+  });
+});

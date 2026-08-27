@@ -143,8 +143,10 @@ pub fn open_vault(
 
     let mut closed_vault_ids = Vec::new();
     let mut reopened_cross_desktop = false;
-    let mut target_is_open =
-        !force && (!target_windows.is_empty() || (is_running() && registry_marks_open(&vault)));
+    // A repository is considered open only when a real Obsidian window is
+    // discoverable. The registry's `open` bit is historical and may linger
+    // after a window has closed.
+    let mut target_is_open = !force && !target_windows.is_empty();
 
     #[cfg(windows)]
     let target_desktop = caller_hwnd.and_then(|hwnd| crate::windows_desktop::desktop_id(hwnd).ok());
@@ -371,43 +373,6 @@ fn vault_uri(vault: &VaultRecord, relative_path: Option<&str>) -> String {
         );
     }
     uri
-}
-
-fn registry_marks_open(vault: &VaultRecord) -> bool {
-    let Some(appdata) = std::env::var_os("APPDATA") else {
-        return false;
-    };
-    let path = Path::new(&appdata).join("obsidian").join("obsidian.json");
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return false;
-    };
-    let Ok(root) = serde_json::from_str::<serde_json::Value>(&text) else {
-        return false;
-    };
-    registry_value_marks_open(&root, vault)
-}
-
-fn registry_value_marks_open(root: &serde_json::Value, vault: &VaultRecord) -> bool {
-    let Some(entries) = root.get("vaults").and_then(serde_json::Value::as_object) else {
-        return false;
-    };
-    entries.iter().any(|(id, entry)| {
-        if !entry
-            .get("open")
-            .and_then(serde_json::Value::as_bool)
-            .unwrap_or(false)
-        {
-            return false;
-        }
-        if vault.obsidian_id.as_deref() == Some(id.as_str()) {
-            return true;
-        }
-        let Some(candidate) = entry.get("path").and_then(serde_json::Value::as_str) else {
-            return false;
-        };
-        crate::util::normalize_path(Path::new(candidate))
-            .eq_ignore_ascii_case(&crate::util::normalize_path(Path::new(&vault.path)))
-    })
 }
 
 #[cfg(not(windows))]
@@ -683,26 +648,6 @@ mod tests {
             is_template: false,
             excluded_categories: Vec::new(),
         }
-    }
-
-    #[test]
-    fn current_registry_state_overrides_a_stale_catalog() {
-        let root = serde_json::json!({"vaults": {
-            "abc": {"path": "C:\\Notes\\Active", "open": true},
-            "def": {"path": "C:\\Notes\\Closed", "open": false}
-        }});
-        assert!(registry_value_marks_open(
-            &root,
-            &vault("C:\\Different", Some("abc"))
-        ));
-        assert!(registry_value_marks_open(
-            &root,
-            &vault("c:\\notes\\active", None)
-        ));
-        assert!(!registry_value_marks_open(
-            &root,
-            &vault("C:\\Notes\\Closed", Some("def"))
-        ));
     }
 
     #[test]

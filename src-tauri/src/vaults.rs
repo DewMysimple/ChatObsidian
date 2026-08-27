@@ -20,8 +20,6 @@ struct ObsidianConfig {
 struct ObsidianVault {
     path: String,
     ts: Option<i64>,
-    #[serde(default)]
-    open: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -63,7 +61,10 @@ pub fn refresh_registered_metadata(connection: &Connection) -> AppResult<()> {
         updated.display_name = inherited_display_name(Some(previous), &name);
         updated.group_name = inherited_group_name(Some(previous), &group);
         updated.last_opened = registered.ts.or(previous.last_opened);
-        updated.is_open = registered.open;
+        // The registry's `open` bit is a historical hint and can remain true
+        // after a window has closed. Runtime status is refreshed from actual
+        // Obsidian windows immediately after this metadata pass.
+        updated.is_open = false;
         updated.health = if !path.is_dir() {
             "missing"
         } else if !obsidian_dir.is_dir() {
@@ -75,6 +76,108 @@ pub fn refresh_registered_metadata(connection: &Connection) -> AppResult<()> {
         db::upsert_vault(connection, &updated, now)?;
     }
     Ok(())
+}
+
+/// Refreshes metadata for already registered vaults found below the user's
+/// scan roots. This deliberately does not create new catalog rows or index
+/// notes; a full scan remains the explicit operation for importing new vaults.
+pub fn refresh_scan_root_metadata(
+    connection: &Connection,
+    preferences: &AppPreferences,
+) -> AppResult<()> {
+    let existing_by_path: HashMap<String, VaultRecord> = db::list_vaults(connection)?
+        .into_iter()
+        .map(|vault| (normalize_key(Path::new(&vault.path)), vault))
+        .collect();
+    let now = now_millis();
+    for root in &preferences.scan_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        for path in discover_under_root(root_path) {
+            let key = normalize_key(&path);
+            let Some(previous) = existing_by_path.get(&key) else {
+                continue;
+            };
+            let name = path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("未命名仓库")
+                .to_string();
+            let group = path
+                .parent()
+                .and_then(Path::file_name)
+                .and_then(|value| value.to_str())
+                .unwrap_or("未分组")
+                .to_string();
+            let obsidian_dir = path.join(".obsidian");
+            let mut updated = previous.clone();
+            updated.path = normalize_path(&path);
+            updated.name = name.clone();
+            updated.display_name = inherited_display_name(Some(previous), &name);
+            updated.group_name = inherited_group_name(Some(previous), &group);
+            updated.health = if !path.is_dir() {
+                "missing"
+            } else if !obsidian_dir.is_dir() {
+                "invalid"
+            } else {
+                "healthy"
+            }
+            .to_string();
+            updated.is_open = false;
+            db::upsert_vault(connection, &updated, now)?;
+        }
+    }
+    Ok(())
+}
+
+/// Refreshes the transient open flag from real Obsidian windows. This is kept
+/// separate from discovery metadata so callers can run it frequently without
+/// rescanning notes or recalculating configuration signatures.
+pub fn refresh_runtime_status(connection: &Connection) -> AppResult<()> {
+    let vaults = db::list_vaults(connection)?;
+    #[cfg(windows)]
+    let windows = crate::windows_desktop::obsidian_windows();
+    #[cfg(windows)]
+    let name_counts = vaults
+        .iter()
+        .fold(HashMap::<String, usize>::new(), |mut counts, vault| {
+            *counts.entry(vault.name.to_lowercase()).or_default() += 1;
+            counts
+        });
+
+    for vault in vaults {
+        #[cfg(windows)]
+        let is_open = name_counts.get(&vault.name.to_lowercase()) == Some(&1)
+            && windows
+                .iter()
+                .any(|window| crate::windows_desktop::matches_vault(&window.title, &vault.name));
+        #[cfg(not(windows))]
+        let is_open = false;
+        connection.execute(
+            "UPDATE vaults SET is_open=?1 WHERE id=?2",
+            rusqlite::params![is_open, vault.id],
+        )?;
+    }
+    Ok(())
+}
+
+/// Rebuild only Markdown title entries. It intentionally avoids configuration
+/// signatures, operation history and registry discovery, making it suitable
+/// for the quick switcher's low-frequency foreground refresh.
+pub fn refresh_note_index(connection: &mut Connection) -> AppResult<usize> {
+    let vaults = db::list_vaults(connection)?;
+    let mut indexed = 0_usize;
+    for vault in vaults {
+        if vault.health != "healthy" || vault.is_template || vault.archived {
+            continue;
+        }
+        let notes = index_notes(Path::new(&vault.path));
+        indexed += notes.len();
+        db::replace_note_index(connection, &vault, &notes)?;
+    }
+    Ok(indexed)
 }
 
 pub fn scan(connection: &mut Connection, preferences: &AppPreferences) -> AppResult<ScanResult> {
@@ -102,7 +205,7 @@ pub fn scan(connection: &mut Connection, preferences: &AppPreferences) -> AppRes
                         obsidian_id: Some(obsidian_id),
                         path,
                         last_opened: vault.ts,
-                        is_open: vault.open,
+                        is_open: false,
                     },
                 );
             }

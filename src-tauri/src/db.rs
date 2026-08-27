@@ -225,7 +225,7 @@ pub fn search_notes(
 ) -> AppResult<Vec<NoteIndexEntry>> {
     let pattern = format!("%{}%", query.replace('%', "\\%").replace('_', "\\_"));
     let mut statement = connection.prepare(
-        "SELECT n.id,n.vault_id,v.display_name,n.relative_path,n.title,n.modified_at FROM notes n JOIN vaults v ON v.id=n.vault_id WHERE n.title LIKE ?1 ESCAPE '\\' OR n.relative_path LIKE ?1 ESCAPE '\\' ORDER BY CASE WHEN n.title LIKE ?2 THEN 0 ELSE 1 END,n.modified_at DESC LIMIT ?3",
+        "SELECT n.id,n.vault_id,v.display_name,n.relative_path,n.title,n.modified_at FROM notes n JOIN vaults v ON v.id=n.vault_id WHERE n.title LIKE ?1 ESCAPE '\\' ORDER BY CASE WHEN n.title LIKE ?2 THEN 0 ELSE 1 END,n.modified_at DESC LIMIT ?3",
     )?;
     let prefix = format!("{}%", query.replace('%', "\\%").replace('_', "\\_"));
     let rows = statement.query_map(params![pattern, prefix, limit as i64], |row| {
@@ -304,5 +304,28 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].path, "C:\\Notes\\New");
         assert_eq!(rows[0].display_name, "New");
+    }
+
+    #[test]
+    fn search_notes_matches_titles_but_not_relative_paths() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        migrate(&connection).unwrap();
+        let record = vault("C:\\Notes\\Vault", "Vault");
+        upsert_vault(&connection, &record, 1).unwrap();
+        replace_note_index(
+            &mut connection,
+            &record,
+            &[
+                ("目录/标题.md".into(), "目标笔记".into(), 2),
+                ("其他.md".into(), "普通笔记".into(), 1),
+            ],
+        )
+        .unwrap();
+
+        assert!(search_notes(&connection, "目录", 10).unwrap().is_empty());
+        assert_eq!(
+            search_notes(&connection, "目标", 10).unwrap()[0].title,
+            "目标笔记"
+        );
     }
 }
