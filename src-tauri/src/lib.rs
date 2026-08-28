@@ -30,7 +30,7 @@ pub fn run() {
         // existing process before it has a chance to create another window.
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if !args.iter().any(|arg| arg == "--background") {
-                let _ = show_main(app, false);
+                request_show_main(app, false);
             }
         }))
         .plugin(tauri_plugin_autostart::init(
@@ -62,7 +62,7 @@ pub fn run() {
                             let action = shortcut_action(shortcut, &bindings);
                             match action.as_deref() {
                                 Some("show") => {
-                                    let _ = show_main(app, true);
+                                    request_show_main(app, true);
                                 }
                                 Some("single") => {
                                     let _ = show_quick(app, "single");
@@ -100,7 +100,7 @@ pub fn run() {
                     ..
                 }
             ) {
-                let _ = show_main(app, false);
+                request_show_main(app, false);
             }
         })
         .setup(|app| {
@@ -256,7 +256,7 @@ fn build_tray(app: &mut tauri::App) -> tauri::Result<()> {
     builder
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => {
-                let _ = show_main(app, false);
+                request_show_main(app, false);
             }
             "quick" => {
                 let mode = app
@@ -285,7 +285,9 @@ pub(crate) fn show_main(app: &tauri::AppHandle, navigate_to_vaults: bool) -> App
         .ok_or_else(|| message("仓库中心窗口不存在"))?;
     #[cfg(windows)]
     if let Ok(hwnd) = window.hwnd() {
-        let _ = windows_desktop::move_to_foreground_desktop(hwnd.0 as isize);
+        if let Err(error) = windows_desktop::move_to_foreground_desktop(hwnd.0 as isize) {
+            eprintln!("ChatObsidian could not move the main window to the current desktop: {error}");
+        }
     }
     window.show().map_err(|error| message(error.to_string()))?;
     window
@@ -294,10 +296,29 @@ pub(crate) fn show_main(app: &tauri::AppHandle, navigate_to_vaults: bool) -> App
     window
         .set_focus()
         .map_err(|error| message(error.to_string()))?;
+    #[cfg(windows)]
+    if let Ok(hwnd) = window.hwnd() {
+        windows_desktop::focus_window(hwnd.0 as isize);
+    }
     if navigate_to_vaults {
         let _ = window.emit("navigate-to-vaults", ());
     }
     Ok(())
+}
+
+/// Queue a window restore instead of running it inside a tray or single-instance
+/// callback. The Windows single-instance plugin receives WM_COPYDATA synchronously;
+/// doing WebView/virtual-desktop work inline can block that message and leave the
+/// background-launched process with a visible tray icon but no responsive window.
+fn request_show_main(app: &tauri::AppHandle, navigate_to_vaults: bool) {
+    let handle = app.clone();
+    if let Err(error) = app.run_on_main_thread(move || {
+        if let Err(error) = show_main(&handle, navigate_to_vaults) {
+            eprintln!("ChatObsidian could not restore the main window: {error}");
+        }
+    }) {
+        eprintln!("ChatObsidian could not queue the main window restore: {error}");
+    }
 }
 
 pub(crate) fn show_quick(app: &tauri::AppHandle, mode: &str) -> AppResult<()> {

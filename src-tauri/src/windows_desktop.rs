@@ -4,10 +4,13 @@ use windows::Win32::Foundation::{HWND, LPARAM, RECT};
 use windows::Win32::System::Com::{
     CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoUninitialize,
 };
+use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 use windows::Win32::UI::Shell::{IVirtualDesktopManager, VirtualDesktopManager};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetForegroundWindow, GetWindowRect, GetWindowTextLengthW, GetWindowTextW,
-    IsWindowVisible, PostMessageW, SW_RESTORE, SetForegroundWindow, ShowWindowAsync, WM_CLOSE,
+    BringWindowToTop, EnumWindows, GetForegroundWindow, GetWindowRect,
+    GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible, PostMessageW,
+    SW_RESTORE, SetForegroundWindow,
+    ShowWindowAsync, WM_CLOSE,
 };
 use windows::core::{BOOL, GUID};
 
@@ -123,8 +126,26 @@ pub fn focus_largest(windows: &[ObsidianWindow]) {
 pub fn focus_window(hwnd: isize) {
     let hwnd = HWND(hwnd as *mut c_void);
     unsafe {
+        // Windows normally allows a tray click to activate the app, but a
+        // process launched by the Startup registry entry has no foreground
+        // permission. Temporarily joining the foreground input queue makes
+        // restoring the hidden window reliable without leaving it topmost.
+        let foreground = GetForegroundWindow();
+        let current_thread = GetCurrentThreadId();
+        let foreground_thread = if foreground.0.is_null() {
+            0
+        } else {
+            GetWindowThreadProcessId(foreground, None)
+        };
+        let attached = foreground_thread != 0
+            && foreground_thread != current_thread
+            && AttachThreadInput(current_thread, foreground_thread, true).as_bool();
         let _ = ShowWindowAsync(hwnd, SW_RESTORE);
+        let _ = BringWindowToTop(hwnd);
         let _ = SetForegroundWindow(hwnd);
+        if attached {
+            let _ = AttachThreadInput(current_thread, foreground_thread, false);
+        }
     }
 }
 
