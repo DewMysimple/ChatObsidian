@@ -20,4 +20,7 @@ pub struct AppState {
     pub paths: AppPaths,
     pub exiting: AtomicBool,
     pub shortcut_capture: AtomicBool,
+    /// Prevents periodic config checks from piling up when filesystem I/O is
+    /// slower than the polling interval or an IPC caller disappears.
+    pub config_check_in_flight: AtomicBool,
 }

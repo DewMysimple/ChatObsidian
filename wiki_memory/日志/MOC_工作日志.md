@@ -3,7 +3,7 @@ type: moc
 status: active
 kind: process
 importance: high
-updated: 2026-08-28
+updated: 2026-08-31
 topic: work-log-index
 source_logs: []
 supersedes: null
@@ -15,6 +15,7 @@ supersedes: null
 
 | 时间 | 类型 | 目标 | 状态 | 主题 | 日志 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-31 | bug | - | archived | release-freeze-and-relocation-cache | [[日志/2026-08-31-发布版卡死与迁移缓存修复.md|发布版卡死与迁移缓存修复]] |
 | 2026-08-28 | bug | - | archived | quick-switcher-recent-order-and-vault-count | [[日志/2026-08-28-快速切换最近排序与仓库计数修复.md|快速切换最近排序与仓库计数修复]] |
 | 2026-08-28 | bug | - | archived | startup-tray-window-restore | [[日志/2026-08-28-开机自启托盘恢复修复.md|开机自启托盘恢复修复]] |
 | 2026-08-28 | maintenance | - | archived | workspace-relocation | [[日志/2026-08-28-ChatObsidian项目迁移.md|ChatObsidian 项目迁移]] |

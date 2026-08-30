@@ -855,6 +855,7 @@ mod tests {
             paths,
             exiting: AtomicBool::new(false),
             shortcut_capture: AtomicBool::new(false),
+            config_check_in_flight: AtomicBool::new(false),
         }
     }
 
@@ -954,6 +955,7 @@ mod tests {
             },
             exiting: AtomicBool::new(false),
             shortcut_capture: AtomicBool::new(false),
+            config_check_in_flight: AtomicBool::new(false),
         };
         let plan = SyncPlan {
             source_path: preferences.template_path,

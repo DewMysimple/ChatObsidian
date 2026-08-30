@@ -700,6 +700,7 @@ mod tests {
             },
             exiting: AtomicBool::new(false),
             shortcut_capture: AtomicBool::new(false),
+            config_check_in_flight: AtomicBool::new(false),
         };
 
         let (first, first_hit) = cached_managed_hashes(&state, &record).unwrap();

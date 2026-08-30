@@ -52,12 +52,41 @@ export function App() {
   }, [preferences.theme]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      void desktop.checkActiveConfigChange().then((notice) => {
-        if (notice) setPendingChange(notice);
-      });
-    }, 4000);
-    return () => window.clearInterval(timer);
+    let disposed = false;
+    let inFlight = false;
+
+    // Configuration checks touch the local filesystem. Keep at most one IPC
+    // request in flight: if a slow disk or a large vault makes a check take
+    // longer than the interval, the next tick must be skipped instead of
+    // creating an unbounded spawn_blocking queue and eventually freezing the
+    // WebView. Hidden tray windows also have no reason to poll.
+    const check = () => {
+      if (disposed || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      void desktop.checkActiveConfigChange()
+        .then((notice) => {
+          if (!disposed && notice) setPendingChange(notice);
+        })
+        .catch(() => {
+          // A transient IPC/filesystem failure should not create an
+          // unhandled rejection or stop future checks.
+        })
+        .finally(() => {
+          inFlight = false;
+        });
+    };
+
+    const timer = window.setInterval(check, 4000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') check();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    check();
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [setPendingChange]);
 
   return (

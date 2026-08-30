@@ -142,6 +142,7 @@ pub fn run() {
                 paths,
                 exiting: AtomicBool::new(false),
                 shortcut_capture: AtomicBool::new(false),
+                config_check_in_flight: AtomicBool::new(false),
             });
             if let Err(error) = register_shortcuts(app.handle(), &preferences.shortcuts) {
                 eprintln!("ChatObsidian global shortcuts are unavailable: {error}");

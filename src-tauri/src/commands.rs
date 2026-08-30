@@ -328,6 +328,27 @@ pub async fn list_template_plugins(app: AppHandle) -> AppResult<Vec<TemplatePlug
 pub async fn check_active_config_change(app: AppHandle) -> AppResult<Option<ConfigChangeNotice>> {
     run_blocking(move || {
         let state = app.state::<AppState>();
+        if state
+            .config_check_in_flight
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::Acquire,
+                std::sync::atomic::Ordering::Relaxed,
+            )
+            .is_err()
+        {
+            return Ok(None);
+        }
+
+        struct CheckGuard<'a>(&'a std::sync::atomic::AtomicBool);
+        impl Drop for CheckGuard<'_> {
+            fn drop(&mut self) {
+                self.0
+                    .store(false, std::sync::atomic::Ordering::Release);
+            }
+        }
+        let _guard = CheckGuard(&state.config_check_in_flight);
         obsidian::check_active_change(&state)
     })
     .await
