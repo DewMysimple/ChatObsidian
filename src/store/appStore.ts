@@ -72,6 +72,12 @@ export const useAppStore = create<AppState>((set, get) => {
     try {
       const data = await desktop.getDashboard();
       set({ ...data, loading: false });
+      // Do not put the first-run walk on the critical startup path. The
+      // catalog is intentionally rendered first, then the explicit scan
+      // populates it while the rest of the UI remains responsive.
+      if (data.vaults.length === 0) {
+        void get().scan();
+      }
     } catch (error) {
       set({
         loading: false,

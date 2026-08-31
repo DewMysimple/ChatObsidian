@@ -1,6 +1,6 @@
 [package]
 name = "chat-obsidian"
-version = "0.1.12"
+version = "0.1.13"
 description = "Local Obsidian vault manager"
 authors = ["ChatObsidian"]
 edition = "2024"

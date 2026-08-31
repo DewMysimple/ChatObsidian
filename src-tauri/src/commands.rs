@@ -22,30 +22,17 @@ where
 pub async fn get_dashboard(app: AppHandle) -> AppResult<DashboardData> {
     run_blocking(move || {
         let state = app.state::<AppState>();
-        let empty = {
-            let connection = state.db.lock().map_err(|_| message("数据库锁已损坏"))?;
-            db::list_vaults(&connection)?.is_empty()
-        };
-        if empty {
-            let preferences = state
-                .preferences
-                .lock()
-                .map_err(|_| message("偏好设置锁已损坏"))?
-                .clone();
-            let mut connection = state.db.lock().map_err(|_| message("数据库锁已损坏"))?;
-            vaults::scan(&mut connection, &preferences)?;
-        } else {
-            let connection = state.db.lock().map_err(|_| message("数据库锁已损坏"))?;
-            // Keep startup responsive: this reads only Obsidian's small registry
-            // file and never rebuilds the note index or configuration hashes.
-            let _ = vaults::refresh_registered_metadata(&connection);
-        }
+        let connection = state.db.lock().map_err(|_| message("数据库锁已损坏"))?;
+        // Startup must only read the existing catalog. A first-run scan and
+        // configuration-change hashing can both touch thousands of files and
+        // are scheduled after the shell is painted (see App.load and the
+        // periodic check). Keeping them out of this request prevents the
+        // loading shell from looking frozen on slow disks or large vaults.
+        let _ = vaults::refresh_registered_metadata(&connection);
         {
-            let connection = state.db.lock().map_err(|_| message("数据库锁已损坏"))?;
             vaults::refresh_runtime_status(&connection)?;
         }
         let (vaults, groups, operations) = {
-            let connection = state.db.lock().map_err(|_| message("数据库锁已损坏"))?;
             (
                 db::list_vaults(&connection)?,
                 db::list_groups(&connection)?,
@@ -61,7 +48,10 @@ pub async fn get_dashboard(app: AppHandle) -> AppResult<DashboardData> {
                 .lock()
                 .map_err(|_| message("偏好设置锁已损坏"))?
                 .clone(),
-            pending_change: obsidian::pending_change(&state)?,
+            // Hashing is intentionally handled after the first paint by the
+            // App-level single-flight polling effect. Returning a notice here
+            // would make every cold start wait on filesystem I/O.
+            pending_change: None,
         })
     })
     .await
