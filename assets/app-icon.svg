@@ -1,8 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <rect width="1024" height="1024" rx="256" fill="#7852ee"/>
-  <g fill="none" stroke="#ffffff" stroke-width="44" stroke-linejoin="round">
-    <rect x="250" y="250" width="524" height="524" rx="56" transform="rotate(45 512 512)"/>
-    <rect x="360" y="210" width="390" height="540" rx="48" transform="rotate(25 512 512)" opacity="0.82"/>
-    <rect x="290" y="350" width="410" height="440" rx="48" transform="rotate(-18 512 512)" opacity="0.62"/>
-  </g>
+  <rect x="40" y="40" width="944" height="944" rx="210" fill="#faf9f6"/>
+  <path d="M221 206 685 160l141 110v526L342 858 198 741V256Z" fill="#242422"/>
+  <path d="m247 233 425-42 100 79-427 44Z" fill="#faf9f6"/>
+  <path d="m351 343 439-44v473l-439 52Z" fill="#faf9f6"/>
+  <path d="m236 277 80 66v464l-80-81Z" fill="#e3e1da"/>
+  <path d="M672 417c-24-24-61-34-101-29-89 10-143 83-143 179 0 109 65 172 151 161 37-4 72-20 100-49v-64c-26 31-55 48-85 52-52 6-83-33-83-104 0-67 31-111 78-117 31-4 57 10 83 38Z" fill="#242422"/>
+  <path d="m378 363 49-5" stroke="#242422" stroke-width="9" stroke-linecap="round"/>
 </svg>

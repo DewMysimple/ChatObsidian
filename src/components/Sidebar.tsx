@@ -1,75 +1,107 @@
 import {
-  ArrowsClockwise,
+  Archive,
+  CaretDown,
   ClockCounterClockwise,
   GearSix,
-  SquaresFour,
-  TerminalWindow,
-  Tray,
-} from '@phosphor-icons/react';
-import type { Icon } from '@phosphor-icons/react';
-import { useAppStore, type ViewId } from '../store/appStore';
-
-const nav: Array<{ id: ViewId; label: string; icon: Icon }> = [
-  { id: 'vaults', label: '仓库中心', icon: SquaresFour },
-  { id: 'sync', label: '同步中心', icon: ArrowsClockwise },
-  { id: 'template', label: '配置模板', icon: Tray },
-  { id: 'tools', label: '工具箱', icon: TerminalWindow },
-  { id: 'history', label: '任务记录', icon: ClockCounterClockwise },
-  { id: 'settings', label: '偏好设置', icon: GearSix },
-];
+  MagnifyingGlass,
+  Plus,
+  Star,
+} from "@phosphor-icons/react";
+import { useState } from "react";
+import { useAppStore } from "../store/appStore";
+import { desktop } from "../lib/desktop";
+import { CollectionDialog } from "./DatabaseDialogs";
+import appIcon from "../../assets/app-icon.svg";
 
 export function Sidebar() {
-  const view = useAppStore((state) => state.view);
-  const setView = useAppStore((state) => state.setView);
-  const vaults = useAppStore((state) => state.vaults);
-  const pending = useAppStore((state) => state.pendingChange);
-  const active = vaults.find((vault) => vault.isOpen);
-
+  const { view, collectionId, scope, workspace, navigate, setView } =
+    useAppStore();
+  const [create, setCreate] = useState(false);
+  const count = (id: string) =>
+    workspace?.items.filter(
+      (item) => item.collectionId === id && !item.archived,
+    ).length ?? 0;
   return (
     <aside className="sidebar">
-      <div className="brand">
-        <div className="brand-mark" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </div>
-        <div className="brand-copy">
+      <div className="workspace-brand">
+        <img src={appIcon} alt="" />
+        <div>
           <strong>ChatObsidian</strong>
-          <small>VAULT DESK</small>
+          <span>个人工作空间</span>
         </div>
+        <CaretDown size={13} />
       </div>
-
-      <p className="nav-label">LOCAL VAULTS</p>
-      <nav className="nav-list" aria-label="主要导航">
-        {nav.map(({ id, label, icon: NavIcon }) => (
+      <button
+        className="sidebar-search"
+        onClick={() => void desktop.showQuickSwitcher("additive")}
+      >
+        <MagnifyingGlass size={18} />
+        <span>搜索与快速打开</span>
+        <kbd>Ctrl K</kbd>
+      </button>
+      <nav aria-label="工作空间导航">
+        <div className="nav-section-label">工作空间</div>
+        {workspace?.collections.map((collection) => (
           <button
-            className={`nav-item ${view === id ? 'is-active' : ''}`}
-            key={id}
-            onClick={() => setView(id)}
-            type="button"
+            key={collection.id}
+            className={`nav-item ${view === "database" && collectionId === collection.id && scope === "all" ? "is-active" : ""}`}
+            onClick={() => navigate(collection.id)}
           >
-            <NavIcon size={18} weight={view === id ? 'fill' : 'regular'} />
-            <span>{label}</span>
-            {id === 'sync' && pending ? <span className="nav-count">1</span> : null}
+            <span className="nav-icon">{collection.icon}</span>
+            <span>{collection.name}</span>
+            <span className="nav-count">{count(collection.id)}</span>
           </button>
         ))}
+        <button
+          className="nav-item nav-add"
+          disabled={!workspace}
+          onClick={() => setCreate(true)}
+        >
+          <Plus size={17} />
+          <span>新建数据库</span>
+        </button>
+        <div className="nav-section-label second">整理</div>
+        <button
+          className={`nav-item ${scope === "favorites" && view === "database" ? "is-active" : ""}`}
+          onClick={() => navigate(collectionId, "favorites")}
+        >
+          <Star size={18} />
+          <span>我的收藏</span>
+        </button>
+        <button
+          className={`nav-item ${scope === "archive" && view === "database" ? "is-active" : ""}`}
+          onClick={() => navigate(collectionId, "archive")}
+        >
+          <Archive size={18} />
+          <span>已归档</span>
+        </button>
+        <button
+          className={`nav-item ${view === "history" ? "is-active" : ""}`}
+          onClick={() => setView("history")}
+        >
+          <ClockCounterClockwise size={18} />
+          <span>活动记录</span>
+        </button>
       </nav>
-
-      <div className="sidebar-spacer" />
-      <section className="active-vault-card" aria-label="当前仓库">
-        <div className="status-line">
-          <span className={`semantic-dot ${active ? 'is-online' : ''}`} />
-          <span>{active ? 'OBSIDIAN 已连接' : 'OBSIDIAN 空闲'}</span>
+      <div className="sidebar-bottom">
+        <button
+          className={`nav-item ${view === "settings" ? "is-active" : ""}`}
+          onClick={() => setView("settings")}
+        >
+          <GearSix size={18} />
+          <span>设置</span>
+          <span className="nav-version">0.1.14</span>
+        </button>
+        <div className="sidebar-user">
+          <span className="user-avatar">我</span>
+          <div>
+            <strong>我的工作空间</strong>
+            <small>保存在这台电脑上</small>
+          </div>
+          <span className="status-dot online" />
         </div>
-        <strong>{active?.displayName ?? '没有打开的仓库'}</strong>
-        <small>{active ? active.groupName : '从仓库中心开始工作'}</small>
-        <div className="engine-rule" />
-        <div className="status-line muted">
-          <span>标题索引</span>
-          <span>{vaults.reduce((sum, vault) => sum + vault.noteCount, 0).toLocaleString()} 条</span>
-        </div>
-      </section>
-      <p className="build-label">LOCAL ONLY · WINDOWS</p>
+      </div>
+      {create && <CollectionDialog onClose={() => setCreate(false)} />}
     </aside>
   );
 }

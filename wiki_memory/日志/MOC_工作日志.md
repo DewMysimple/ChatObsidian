@@ -3,7 +3,7 @@ type: moc
 status: active
 kind: process
 importance: high
-updated: 2026-09-16
+updated: 2026-09-17
 topic: work-log-index
 source_logs: []
 supersedes: null
@@ -15,6 +15,7 @@ supersedes: null
 
 | 时间 | 类型 | 目标 | 状态 | 主题 | 日志 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-17 | feature | - | archived | local-database-workspace-redesign | [[日志/2026-09-17-Notion风格本地数据库工作台重做.md|Notion 风格本地数据库工作台重做]] |
 | 2026-09-16 | discussion | - | archived | architecture-review | [[日志/2026-09-16-工程架构审查.md|工程架构审查]] |
 | 2026-08-31 | bug | - | archived | startup-loading-shell | [[日志/2026-08-31-启动骨架屏与配置检查解耦修复.md|启动骨架屏与配置检查解耦修复]] |
 | 2026-08-31 | bug | - | archived | release-freeze-and-relocation-cache | [[日志/2026-08-31-发布版卡死与迁移缓存修复.md|发布版卡死与迁移缓存修复]] |

@@ -1,10 +1,9 @@
 use crate::db;
 use crate::error::{AppResult, message};
 use crate::models::{AppPreferences, ScanResult, VaultRecord};
-use crate::util::{file_hash, normalize_path, now_millis, stable_id};
+use crate::util::{normalize_path, now_millis, stable_id};
 use rusqlite::Connection;
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -28,6 +27,13 @@ struct DiscoveredVault {
     path: PathBuf,
     last_opened: Option<i64>,
     is_open: bool,
+}
+
+pub fn registered_vault_path(id: &str) -> AppResult<Option<PathBuf>> {
+    Ok(read_obsidian_config()?
+        .vaults
+        .get(id)
+        .map(|vault| PathBuf::from(&vault.path)))
 }
 
 pub fn refresh_registered_metadata(connection: &Connection) -> AppResult<()> {
@@ -249,7 +255,6 @@ pub fn scan(connection: &mut Connection, preferences: &AppPreferences) -> AppRes
             });
     }
 
-    let template_signature = config_signature(Path::new(&preferences.template_path)).ok();
     let mut records = Vec::new();
     for (key, found) in discovered {
         let normalized = normalize_path(&found.path);
@@ -282,19 +287,7 @@ pub fn scan(connection: &mut Connection, preferences: &AppPreferences) -> AppRes
                 .filter(|record: &&VaultRecord| record.group_name == group)
                 .count() as i64
         });
-        let config_state = if !valid {
-            "missing".to_string()
-        } else if is_template {
-            "synced".to_string()
-        } else if let Some(template) = &template_signature {
-            match config_signature(&obsidian_dir) {
-                Ok(value) if &value == template => "synced".to_string(),
-                Ok(_) => "drifted".to_string(),
-                Err(_) => "unchecked".to_string(),
-            }
-        } else {
-            "unchecked".to_string()
-        };
+        let config_state = "unchecked".to_string();
         let id = previous.map(|vault| vault.id.clone()).unwrap_or_else(|| {
             found
                 .obsidian_id
@@ -393,7 +386,10 @@ fn inherited_display_name(previous: Option<&VaultRecord>, directory_name: &str) 
         .unwrap_or_else(|| directory_name.to_string())
 }
 
-fn merge_last_opened(registry_timestamp: Option<i64>, catalog_timestamp: Option<i64>) -> Option<i64> {
+fn merge_last_opened(
+    registry_timestamp: Option<i64>,
+    catalog_timestamp: Option<i64>,
+) -> Option<i64> {
     match (registry_timestamp, catalog_timestamp) {
         (Some(registry), Some(catalog)) => Some(registry.max(catalog)),
         (Some(timestamp), None) | (None, Some(timestamp)) => Some(timestamp),
@@ -500,46 +496,6 @@ fn index_notes(root: &Path) -> Vec<(String, String, i64)> {
         ));
     }
     notes
-}
-
-fn config_signature(obsidian_dir: &Path) -> AppResult<String> {
-    if !obsidian_dir.is_dir() {
-        return Err(message("缺少 .obsidian 目录"));
-    }
-    let mut files = Vec::new();
-    for name in [
-        "app.json",
-        "appearance.json",
-        "command-palette.json",
-        "community-plugins.json",
-        "core-plugins.json",
-        "hotkeys.json",
-        "templates.json",
-        "types.json",
-        "webviewer.json",
-    ] {
-        let path = obsidian_dir.join(name);
-        if path.is_file() {
-            files.push(path);
-        }
-    }
-    let plugin_dir = obsidian_dir.join("plugins");
-    if plugin_dir.is_dir() {
-        for entry in WalkDir::new(&plugin_dir).max_depth(2).into_iter().flatten() {
-            if entry.file_type().is_file() && entry.file_name() == "manifest.json" {
-                files.push(entry.path().to_path_buf());
-            }
-        }
-    }
-    files.sort();
-    let mut hasher = Sha256::new();
-    for path in files {
-        if let Ok(relative) = path.strip_prefix(obsidian_dir) {
-            hasher.update(relative.to_string_lossy().replace('\\', "/").as_bytes());
-        }
-        hasher.update(file_hash(&path)?.as_bytes());
-    }
-    Ok(format!("{:x}", hasher.finalize()))
 }
 
 fn normalize_key(path: &Path) -> String {

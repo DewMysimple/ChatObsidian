@@ -19,8 +19,6 @@ pub struct AppState {
     pub preferences: Mutex<AppPreferences>,
     pub paths: AppPaths,
     pub exiting: AtomicBool,
-    pub shortcut_capture: AtomicBool,
-    /// Prevents periodic config checks from piling up when filesystem I/O is
-    /// slower than the polling interval or an IPC caller disappears.
-    pub config_check_in_flight: AtomicBool,
+    /// Only one external window operation may run across both WebViews.
+    pub open_in_flight: AtomicBool,
 }

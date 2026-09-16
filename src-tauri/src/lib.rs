@@ -3,14 +3,13 @@ mod db;
 mod error;
 mod models;
 mod obsidian;
-mod scripts;
 mod settings;
 mod state;
-mod sync_engine;
 mod util;
 mod vaults;
 #[cfg(windows)]
 mod windows_desktop;
+mod workspace;
 
 use crate::error::{AppResult, message};
 use crate::state::{AppPaths, AppState};
@@ -37,7 +36,6 @@ pub fn run() {
             MacosLauncher::LaunchAgent,
             Some(vec!["--background"]),
         ))
-        .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 // Visibility belongs to ChatObsidian's close-to-tray behavior.
@@ -50,9 +48,6 @@ pub fn run() {
                 .with_handler(|app, shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
                         let state = app.state::<AppState>();
-                        if state.shortcut_capture.load(Ordering::Relaxed) {
-                            return;
-                        }
                         let bindings = state
                             .preferences
                             .lock()
@@ -133,7 +128,8 @@ pub fn run() {
             let home = std::env::var_os("USERPROFILE")
                 .map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from("C:\\Users\\Administrator"));
-            let preferences = settings::load(&paths.settings_file, &home);
+            let preferences = settings::load(&paths.settings_file, &home)
+                .map_err(|error| std::io::Error::other(error.to_string()))?;
             let connection = db::open(&paths.database_file)
                 .map_err(|error| tauri::Error::AssetNotFound(error.to_string()))?;
             app.manage(AppState {
@@ -141,8 +137,7 @@ pub fn run() {
                 preferences: std::sync::Mutex::new(preferences.clone()),
                 paths,
                 exiting: AtomicBool::new(false),
-                shortcut_capture: AtomicBool::new(false),
-                config_check_in_flight: AtomicBool::new(false),
+                open_in_flight: AtomicBool::new(false),
             });
             if let Err(error) = register_shortcuts(app.handle(), &preferences.shortcuts) {
                 eprintln!("ChatObsidian global shortcuts are unavailable: {error}");
@@ -151,14 +146,6 @@ pub fn run() {
                 eprintln!("ChatObsidian autostart state could not be restored: {error}");
             }
             build_tray(app)?;
-            let prewarm_app = app.handle().clone();
-            std::thread::spawn(move || {
-                // Let the first paint and catalog load win I/O priority, then
-                // prepare configuration snapshots for millisecond cache hits.
-                std::thread::sleep(std::time::Duration::from_millis(500));
-                let state = prewarm_app.state::<AppState>();
-                let _ = obsidian::prewarm_hash_cache(&state);
-            });
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -188,33 +175,19 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_dashboard,
+            commands::get_workspace,
+            commands::save_workspace,
+            commands::export_workspace,
             commands::scan_vaults,
             commands::refresh_quick_switcher,
-            commands::update_vault,
-            commands::reorder_vaults,
-            commands::reorder_groups,
             commands::open_vault,
-            commands::force_close_and_open,
             commands::search_notes,
-            commands::compute_config_diff,
-            commands::apply_sync,
-            commands::rollback_operation,
-            commands::adopt_vault_config,
-            commands::list_template_plugins,
-            commands::check_active_config_change,
-            commands::dismiss_config_change,
-            commands::list_scripts,
-            commands::preview_script_run,
-            commands::run_script,
-            commands::refresh_script_runs,
             commands::list_operations,
             commands::save_preferences,
             commands::select_directory,
             commands::open_local_path,
             commands::show_quick_switcher,
             commands::hide_quick_switcher,
-            commands::begin_shortcut_capture,
-            commands::cancel_shortcut_capture,
         ])
         .run(tauri::generate_context!())
         .expect("ChatObsidian failed to start");
@@ -287,7 +260,9 @@ pub(crate) fn show_main(app: &tauri::AppHandle, navigate_to_vaults: bool) -> App
     #[cfg(windows)]
     if let Ok(hwnd) = window.hwnd() {
         if let Err(error) = windows_desktop::move_to_foreground_desktop(hwnd.0 as isize) {
-            eprintln!("ChatObsidian could not move the main window to the current desktop: {error}");
+            eprintln!(
+                "ChatObsidian could not move the main window to the current desktop: {error}"
+            );
         }
     }
     window.show().map_err(|error| message(error.to_string()))?;

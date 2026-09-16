@@ -8,9 +8,22 @@ pub fn open(path: &Path) -> AppResult<Connection> {
         std::fs::create_dir_all(parent)?;
     }
     let connection = Connection::open(path)?;
+    connection.busy_timeout(std::time::Duration::from_secs(5))?;
+    let legacy: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='vaults') AND NOT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='workspace_meta')", [], |row| row.get(0))?;
+    if legacy {
+        // VACUUM INTO produces a consistent snapshot even when the catalog uses
+        // WAL. A failed backup aborts the migration; no tables are dropped.
+        let backup = path.with_file_name(format!(
+            "catalog-before-workspace-v1-{}.sqlite",
+            uuid::Uuid::new_v4()
+        ));
+        connection.execute("VACUUM INTO ?1", params![backup.to_string_lossy()])?;
+    }
     connection.pragma_update(None, "journal_mode", "WAL")?;
     connection.pragma_update(None, "foreign_keys", "ON")?;
     migrate(&connection)?;
+    crate::workspace::migrate(&connection)?;
+    connection.busy_timeout(std::time::Duration::from_secs(5))?;
     Ok(connection)
 }
 

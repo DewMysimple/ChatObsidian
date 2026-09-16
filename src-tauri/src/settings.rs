@@ -3,7 +3,7 @@ use crate::models::AppPreferences;
 use crate::util::write_json_atomic;
 use std::path::Path;
 
-pub fn load(path: &Path, home: &Path) -> AppPreferences {
+pub fn load(path: &Path, home: &Path) -> AppResult<AppPreferences> {
     if let Some(text) = std::fs::read_to_string(path).ok() {
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
             if let Ok(mut preferences) = serde_json::from_value::<AppPreferences>(value.clone()) {
@@ -25,15 +25,20 @@ pub fn load(path: &Path, home: &Path) -> AppPreferences {
                     migrated = true;
                 }
                 if migrated {
-                    let _ = save(path, &preferences);
+                    save(path, &preferences)?;
                 }
-                return preferences;
+                return Ok(preferences);
             }
         }
     }
+    if path.exists() {
+        return Err(crate::error::message(
+            "设置文件无法读取或已损坏，已保留原文件；请检查 settings.json",
+        ));
+    }
     let preferences = AppPreferences::default_for_home(home);
-    let _ = save(path, &preferences);
-    preferences
+    save(path, &preferences)?;
+    Ok(preferences)
 }
 
 pub fn save(path: &Path, preferences: &AppPreferences) -> AppResult<()> {
@@ -43,6 +48,17 @@ pub fn save(path: &Path, preferences: &AppPreferences) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn corrupted_settings_are_never_overwritten_with_defaults() {
+        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("settings.json");
+        std::fs::write(&path, "{broken").unwrap();
+        assert!(load(&path, &root).is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "{broken");
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn migrates_legacy_shortcut_and_native_policy() {
@@ -60,7 +76,7 @@ mod tests {
         }"#,
         )
         .unwrap();
-        let loaded = load(&path, &root);
+        let loaded = load(&path, &root).unwrap();
         assert_eq!(loaded.settings_version, 3);
         assert!(!loaded.launch_at_startup);
         assert_eq!(loaded.switch_policy, "additive");

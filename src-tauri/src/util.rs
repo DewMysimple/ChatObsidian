@@ -1,7 +1,7 @@
 use crate::error::{AppResult, message};
 use sha2::{Digest, Sha256};
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 pub fn now_millis() -> i64 {
@@ -22,37 +22,47 @@ pub fn normalize_path(path: &Path) -> String {
         .to_string()
 }
 
-pub fn file_hash(path: &Path) -> AppResult<String> {
-    let mut file = File::open(path)?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
-    loop {
-        let count = file.read(&mut buffer)?;
-        if count == 0 {
-            break;
-        }
-        hasher.update(&buffer[..count]);
-    }
-    Ok(format!("{:x}", hasher.finalize()))
-}
-
 pub fn write_json_atomic<T: serde::Serialize>(path: &Path, value: &T) -> AppResult<()> {
     let parent = path.parent().ok_or_else(|| message("配置文件没有父目录"))?;
     std::fs::create_dir_all(parent)?;
-    let temp = path.with_extension("tmp");
+    let temp = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
     let mut file = File::create(&temp)?;
     file.write_all(serde_json::to_string_pretty(value)?.as_bytes())?;
     file.sync_all()?;
-    if path.exists() {
-        std::fs::remove_file(path)?;
+    drop(file);
+    // Replace in one filesystem operation. Never remove the last good settings
+    // file first: a power loss or failed rename must not destroy preferences.
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Storage::FileSystem::{
+            MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+        };
+        let source: Vec<u16> = temp.as_os_str().encode_wide().chain(Some(0)).collect();
+        let target: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+        if unsafe {
+            MoveFileExW(
+                source.as_ptr(),
+                target.as_ptr(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+        } == 0
+        {
+            let error = std::io::Error::last_os_error();
+            let _ = std::fs::remove_file(&temp);
+            return Err(error.into());
+        }
     }
+    #[cfg(not(windows))]
     std::fs::rename(temp, path)?;
     Ok(())
 }
 
 pub fn safe_relative_path(value: &str) -> AppResult<PathBuf> {
     let path = Path::new(value);
-    if path.is_absolute()
+    if value.contains(':')
+        || value.contains('\0')
+        || path.is_absolute()
         || path.components().any(|part| {
             matches!(
                 part,
@@ -71,19 +81,6 @@ pub fn is_within(child: &Path, parent: &Path) -> bool {
     child.starts_with(parent)
 }
 
-pub fn copy_file_atomic(source: &Path, target: &Path) -> AppResult<u64> {
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let temp = target.with_extension(format!("chatobsidian-{}.tmp", uuid::Uuid::new_v4()));
-    let bytes = std::fs::copy(source, &temp)?;
-    if target.exists() {
-        std::fs::remove_file(target)?;
-    }
-    std::fs::rename(temp, target)?;
-    Ok(bytes)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -96,13 +93,19 @@ mod tests {
     }
 
     #[test]
-    fn hashes_are_stable_and_change_with_content() {
-        let path = std::env::temp_dir().join(format!("chatobsidian-hash-{}", uuid::Uuid::new_v4()));
-        std::fs::write(&path, "alpha").unwrap();
-        let first = file_hash(&path).unwrap();
-        assert_eq!(first, file_hash(&path).unwrap());
-        std::fs::write(&path, "beta").unwrap();
-        assert_ne!(first, file_hash(&path).unwrap());
-        std::fs::remove_file(path).unwrap();
+    fn atomic_settings_replacement_preserves_valid_json() {
+        let root =
+            std::env::temp_dir().join(format!("chatobsidian-atomic-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("settings.json");
+        write_json_atomic(&path, &serde_json::json!({"version":1})).unwrap();
+        write_json_atomic(&path, &serde_json::json!({"version":2})).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(&path).unwrap())
+                .unwrap()["version"],
+            2
+        );
+        assert_eq!(std::fs::read_dir(&root).unwrap().count(), 1);
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

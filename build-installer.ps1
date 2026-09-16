@@ -139,6 +139,7 @@ $nsisDirectory = Join-Path $PSScriptRoot 'src-tauri\target\release\bundle\nsis'
 $latestInstaller = Join-Path $nsisDirectory 'ChatObsidian-latest-setup.exe'
 
 Write-Host "开始 ChatObsidian $version 发布构建。"
+Invoke-CheckedCommand 'python' @('wiki_memory/工具/memory_lint.py', 'check')
 Invoke-CheckedCommand $pnpmCommand @('typecheck')
 Invoke-CheckedCommand $pnpmCommand @('test')
 Invoke-CheckedCommand $pnpmCommand @('test:e2e')
@@ -174,7 +175,7 @@ if ($versionedHash -ne $latestHash) {
 
 if (Test-ExistingChatObsidianInstallation) {
     Write-Host '检测到已有 ChatObsidian 安装，自动覆盖升级。'
-    $installerProcess = Start-Process -FilePath $latestInstaller -ArgumentList @('/S') -Wait -PassThru
+    $installerProcess = Start-Process -FilePath $latestInstaller -ArgumentList @('/S') -WindowStyle Hidden -Wait -PassThru
     if ($installerProcess.ExitCode -ne 0) {
         throw "自动升级安装版失败（退出码 $($installerProcess.ExitCode)）。"
     }

@@ -1,18 +1,20 @@
 use crate::error::{AppResult, message};
 use std::ffi::c_void;
-use windows::Win32::Foundation::{HWND, LPARAM, RECT};
+use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, RECT};
 use windows::Win32::System::Com::{
     CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoUninitialize,
 };
-use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+use windows::Win32::System::Threading::{
+    AttachThreadInput, GetCurrentThreadId, OpenProcess, PROCESS_NAME_WIN32,
+    PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
+};
 use windows::Win32::UI::Shell::{IVirtualDesktopManager, VirtualDesktopManager};
 use windows::Win32::UI::WindowsAndMessaging::{
-    BringWindowToTop, EnumWindows, GetForegroundWindow, GetWindowRect,
-    GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible, PostMessageW,
-    SW_RESTORE, SetForegroundWindow,
-    ShowWindowAsync, WM_CLOSE,
+    BringWindowToTop, EnumWindows, GetForegroundWindow, GetWindowRect, GetWindowTextLengthW,
+    GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, SW_RESTORE,
+    SetForegroundWindow, ShowWindowAsync, WM_CLOSE,
 };
-use windows::core::{BOOL, GUID};
+use windows::core::{BOOL, GUID, PWSTR};
 
 #[derive(Debug, Clone)]
 pub struct ObsidianWindow {
@@ -77,6 +79,9 @@ pub fn obsidian_windows() -> Vec<ObsidianWindow> {
 }
 
 unsafe extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    if !is_obsidian_process(hwnd) {
+        return BOOL(1);
+    }
     if !unsafe { IsWindowVisible(hwnd) }.as_bool() {
         return BOOL(1);
     }
@@ -106,11 +111,35 @@ unsafe extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
 }
 
 pub fn matches_vault(title: &str, vault_name: &str) -> bool {
-    title.contains(&format!(" - {vault_name} - Obsidian "))
+    title
+        .rsplit_once(" - Obsidian ")
+        .is_some_and(|(prefix, _)| {
+            prefix == vault_name || prefix.ends_with(&format!(" - {vault_name}"))
+        })
 }
 
-pub fn is_on_desktop(window: &ObsidianWindow, target: &GUID) -> bool {
-    desktop_id(window.hwnd).is_ok_and(|desktop| desktop == *target)
+fn is_obsidian_process(hwnd: HWND) -> bool {
+    // A matching title is insufficient: never send WM_CLOSE to another app.
+    unsafe {
+        let mut pid = 0;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        let Ok(handle) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else {
+            return false;
+        };
+        let mut path = vec![0u16; 32768];
+        let mut length = path.len() as u32;
+        let result = QueryFullProcessImageNameW(
+            handle,
+            PROCESS_NAME_WIN32,
+            PWSTR(path.as_mut_ptr()),
+            &mut length,
+        );
+        let _ = CloseHandle(handle);
+        result.is_ok()
+            && std::path::Path::new(&String::from_utf16_lossy(&path[..length as usize]))
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("Obsidian.exe"))
+    }
 }
 
 pub fn focus_largest(windows: &[ObsidianWindow]) {
@@ -151,6 +180,16 @@ pub fn focus_window(hwnd: isize) {
 
 pub fn close_windows(windows: &[ObsidianWindow]) -> AppResult<()> {
     for window in windows {
+        let hwnd = HWND(window.hwnd as *mut c_void);
+        if !is_obsidian_process(hwnd) {
+            return Err(message("窗口所属进程已变化，已取消关闭"));
+        }
+        let length = unsafe { GetWindowTextLengthW(hwnd) };
+        let mut buffer = vec![0u16; length.max(0) as usize + 1];
+        let copied = unsafe { GetWindowTextW(hwnd, &mut buffer) };
+        if String::from_utf16_lossy(&buffer[..copied.max(0) as usize]) != window.title {
+            return Err(message("Obsidian 窗口已变化，已取消关闭，请重新尝试"));
+        }
         unsafe {
             PostMessageW(
                 Some(HWND(window.hwnd as *mut c_void)),

@@ -1,6 +1,6 @@
-import { CheckCircle, Info, Warning, X, XCircle } from '@phosphor-icons/react';
-import { useEffect } from 'react';
-import { useAppStore } from '../store/appStore';
+import { CheckCircle, Info, Warning, X, XCircle } from "@phosphor-icons/react";
+import { useEffect } from "react";
+import { useAppStore } from "../store/appStore";
 
 const icons = {
   success: CheckCircle,
@@ -25,7 +25,11 @@ export function Toast() {
     <div className={`toast toast-${toast.tone}`} role="status">
       <ToneIcon size={20} weight="fill" />
       <span>{toast.message}</span>
-      <button type="button" aria-label="关闭通知" onClick={() => showToast(null)}>
+      <button
+        type="button"
+        aria-label="关闭通知"
+        onClick={() => showToast(null)}
+      >
         <X size={16} />
       </button>
     </div>

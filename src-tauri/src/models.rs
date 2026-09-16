@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -43,7 +42,7 @@ impl AppPreferences {
         let root = home.join("Desktop").join("Obsidian仓库");
         Self {
             settings_version: current_settings_version(),
-            theme: "system".into(),
+            theme: "light".into(),
             switch_policy: "additive".into(),
             scan_roots: vec![root.to_string_lossy().to_string()],
             template_path: root
@@ -129,73 +128,6 @@ pub struct QuickSwitcherRefresh {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonChange {
-    pub path: String,
-    pub before: Option<String>,
-    pub after: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConfigDiffEntry {
-    pub target_vault_id: String,
-    pub target_vault_name: String,
-    pub relative_path: String,
-    pub category: String,
-    pub status: String,
-    pub source_size: u64,
-    pub target_size: u64,
-    pub json_changes: Vec<JsonChange>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConfigDiff {
-    pub source_path: String,
-    pub target_count: usize,
-    pub added: usize,
-    pub modified: usize,
-    pub deleted: usize,
-    pub unchanged: usize,
-    pub estimated_backup_bytes: u64,
-    pub entries: Vec<ConfigDiffEntry>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SyncPlan {
-    pub source_path: String,
-    pub target_vault_ids: Vec<String>,
-    pub categories: Vec<String>,
-    pub plugin_data_ids: Vec<String>,
-    pub full_mirror: bool,
-    pub confirm_workspace: bool,
-    pub confirm_deletions: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BackupItem {
-    pub vault_id: String,
-    pub relative_path: String,
-    pub existed_before: bool,
-    pub size: u64,
-    pub hash: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BackupManifest {
-    pub operation_id: String,
-    pub created_at: i64,
-    pub source_path: String,
-    pub items: Vec<BackupItem>,
-    #[serde(default)]
-    pub target_paths: BTreeMap<String, String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct OperationRecord {
     pub id: String,
     pub kind: String,
@@ -206,53 +138,6 @@ pub struct OperationRecord {
     pub finished_at: Option<i64>,
     pub can_rollback: bool,
     pub log_path: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ScriptTool {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub path: String,
-    pub exists: bool,
-    pub last_run: Option<OperationRecord>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ScriptRunPreview {
-    pub script_id: String,
-    pub name: String,
-    pub description: String,
-    pub script_path: String,
-    pub python_path: Option<String>,
-    pub python_version: Option<String>,
-    pub working_directory: String,
-    pub terminal: String,
-    pub log_directory: String,
-    pub interactive: bool,
-    pub ready: bool,
-    pub issues: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TemplatePlugin {
-    pub id: String,
-    pub name: String,
-    pub version: String,
-    pub has_data: bool,
-    pub enabled: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConfigChangeNotice {
-    pub vault_id: String,
-    pub vault_name: String,
-    pub changed_paths: Vec<String>,
-    pub checked_at: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -271,32 +156,4 @@ pub struct DashboardData {
     pub groups: Vec<VaultGroup>,
     pub operations: Vec<OperationRecord>,
     pub preferences: AppPreferences,
-    pub pending_change: Option<ConfigChangeNotice>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateVaultInput {
-    pub id: String,
-    pub display_name: Option<String>,
-    pub group_name: Option<String>,
-    pub tags: Option<Vec<String>>,
-    pub favorite: Option<bool>,
-    pub hidden: Option<bool>,
-    pub archived: Option<bool>,
-    pub order_index: Option<i64>,
-    pub excluded_categories: Option<Vec<String>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReorderVaultsInput {
-    pub group_name: String,
-    pub vault_ids: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReorderGroupsInput {
-    pub group_ids: Vec<String>,
 }
