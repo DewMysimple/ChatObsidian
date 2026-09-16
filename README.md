@@ -2,7 +2,7 @@
 
 一个用于 Windows 的本地知识工作台。以 Notion 的数据库交互为参考，用画廊、表格与看板整理 Obsidian 仓库、项目和独立页面。
 
-**0.1.14 · React 19 + TypeScript + Vite 8 + Tauri 2 + Rust + SQLite**
+**0.1.15 · React 19 + TypeScript + Vite 8 + Tauri 2 + Rust + SQLite**
 
 ![ChatObsidian 仓库画廊（浏览器演示数据）](docs/screenshots/gallery.png)
 
@@ -85,7 +85,7 @@ python wiki_memory/工具/memory_lint.py check
 发布脚本检查三个版本号、运行前端/浏览器/Rust 验证与记忆 lint，只结束 ChatObsidian 进程，构建后生成：
 
 - `src-tauri/target/release/chat-obsidian.exe`
-- `src-tauri/target/release/bundle/nsis/ChatObsidian_0.1.14_x64-setup.exe`
+- `src-tauri/target/release/bundle/nsis/ChatObsidian_0.1.15_x64-setup.exe`
 - `src-tauri/target/release/bundle/nsis/ChatObsidian-latest-setup.exe`
 
 检测到已有安装时自动静默升级。任何测试、进程关闭、构建或安装失败立即中止；不会结束 `Obsidian.exe`，不会自动启动升级后的应用。发布二进制不纳入 Git。
