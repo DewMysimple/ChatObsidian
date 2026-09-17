@@ -228,7 +228,7 @@ export function SettingsView() {
       </section>
       <section className="settings-section">
         <h2>关于这个空间</h2>
-        <p>ChatObsidian 0.1.15 · React + Vite + Tauri</p>
+        <p>ChatObsidian 0.1.16 · React + Vite + Tauri</p>
         <p>
           页面、属性与视图保存在应用数据库中；扫描只读取仓库和笔记标题。归档可以恢复。旧版同步备份和操作记录继续保留。
         </p>

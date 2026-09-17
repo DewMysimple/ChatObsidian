@@ -1,0 +1,4 @@
+[build]
+# Resolved from the repository root, including when Cargo runs inside src-tauri.
+target-dir = ".build/cargo"
+incremental = false

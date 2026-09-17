@@ -1,7 +1,7 @@
 {
   "name": "chat-obsidian",
   "private": true,
-  "version": "0.1.15",
+  "version": "0.1.16",
   "type": "module",
   "packageManager": "pnpm@11.18.0",
   "engines": {
@@ -12,8 +12,10 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
+    "tauri:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File ./start-dev.ps1",
     "tauri:build": "tauri build --bundles nsis",
+    "release": "powershell -NoProfile -ExecutionPolicy Bypass -File ./build-installer.ps1",
+    "test:release": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/test-release.ps1",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",

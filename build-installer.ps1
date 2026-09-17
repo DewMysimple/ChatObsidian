@@ -3,6 +3,7 @@ param()
 
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
+. (Join-Path $PSScriptRoot 'scripts\release.ps1')
 
 $pnpmCommandInfo = Get-Command pnpm.cmd -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($null -eq $pnpmCommandInfo) {
@@ -56,7 +57,7 @@ function Get-ChatObsidianProcesses {
 }
 
 function Stop-ChatObsidianProcesses {
-    $processes = Get-ChatObsidianProcesses
+    $processes = @(Get-ChatObsidianProcesses)
     if ($processes.Count -eq 0) {
         Write-Host '未发现正在运行的 ChatObsidian。'
         return
@@ -74,7 +75,7 @@ function Stop-ChatObsidianProcesses {
     }
 
     Start-Sleep -Milliseconds 500
-    $remaining = Get-ChatObsidianProcesses
+    $remaining = @(Get-ChatObsidianProcesses)
     foreach ($process in $remaining) {
         Write-Host "ChatObsidian（PID $($process.Id)）仍在运行，执行强制结束。"
         try {
@@ -85,7 +86,7 @@ function Stop-ChatObsidianProcesses {
     }
 
     for ($attempt = 0; $attempt -lt 20; $attempt++) {
-        if ((Get-ChatObsidianProcesses).Count -eq 0) {
+        if (@(Get-ChatObsidianProcesses).Count -eq 0) {
             Write-Host 'ChatObsidian 已完全退出。'
             return
         }
@@ -133,59 +134,71 @@ function Test-ExistingChatObsidianInstallation {
     return $false
 }
 
-$version = Get-ProjectVersion
-$releaseExe = Join-Path $PSScriptRoot 'src-tauri\target\release\chat-obsidian.exe'
-$nsisDirectory = Join-Path $PSScriptRoot 'src-tauri\target\release\bundle\nsis'
-$latestInstaller = Join-Path $nsisDirectory 'ChatObsidian-latest-setup.exe'
+$releaseLock = Enter-ReleaseLock $PSScriptRoot
+$previousTarget = $env:CARGO_TARGET_DIR
+$previousNodeEnv = $env:NODE_ENV
+try {
+    $version = Get-ProjectVersion
+    $env:CARGO_TARGET_DIR = Resolve-OutputPath $PSScriptRoot '.build/cargo'
+    $env:NODE_ENV = 'production'
+    $releaseExe = Join-Path $env:CARGO_TARGET_DIR 'release\chat-obsidian.exe'
+    $versionedInstaller = Join-Path $env:CARGO_TARGET_DIR "release\bundle\nsis\ChatObsidian_${version}_x64-setup.exe"
 
-Write-Host "开始 ChatObsidian $version 发布构建。"
-Invoke-CheckedCommand 'python' @('wiki_memory/工具/memory_lint.py', 'check')
-Invoke-CheckedCommand $pnpmCommand @('typecheck')
-Invoke-CheckedCommand $pnpmCommand @('test')
-Invoke-CheckedCommand $pnpmCommand @('test:e2e')
-Invoke-CheckedCommand 'cargo' @('test', '--manifest-path', (Join-Path $PSScriptRoot 'src-tauri\Cargo.toml'))
+    Restore-InterruptedRelease $PSScriptRoot
+    Assert-ReplaceableDist $PSScriptRoot
+    Write-Host "开始 ChatObsidian $version 发布构建；验证和打包期间不改动 dist。"
+    Invoke-CheckedCommand 'python' @('wiki_memory/工具/memory_lint.py', 'check')
+    Invoke-CheckedCommand $pnpmCommand @('test:release')
+    Invoke-CheckedCommand $pnpmCommand @('typecheck')
+    # Test tools need development React; production mode is set again for packaging.
+    $env:NODE_ENV = 'test'
+    Invoke-CheckedCommand $pnpmCommand @('test')
+    $env:NODE_ENV = 'development'
+    Invoke-CheckedCommand $pnpmCommand @('test:e2e')
+    $env:NODE_ENV = 'production'
 
-Stop-ChatObsidianProcesses
-$buildStartedAt = Get-Date
-Invoke-CheckedCommand $pnpmCommand @('tauri:build')
+    # A release never reuses stale versioned Rust artifacts. Development uses the same fixed path.
+    Remove-OutputTree $PSScriptRoot '.build/cargo'
+    Invoke-CheckedCommand 'cargo' @('test', '--locked', '--manifest-path', (Join-Path $PSScriptRoot 'src-tauri\Cargo.toml'))
+    $buildStartedAt = Get-Date
+    Invoke-CheckedCommand $pnpmCommand @('tauri:build')
 
-if (-not (Test-Path -LiteralPath $releaseExe)) {
-    throw "发布 exe 未生成：$releaseExe"
-}
-$exeInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($releaseExe)
-if ([string]$exeInfo.ProductVersion -notlike "$version*") {
-    throw "发布 exe 版本不匹配：实际 $($exeInfo.ProductVersion)，预期 $version"
-}
-
-$versionedInstaller = Join-Path $nsisDirectory "ChatObsidian_${version}_x64-setup.exe"
-if (-not (Test-Path -LiteralPath $versionedInstaller)) {
-    throw "带版本号的 NSIS 安装包未生成：$versionedInstaller"
-}
-$versionedInstallerFile = Get-Item -LiteralPath $versionedInstaller
-if ($versionedInstallerFile.LastWriteTime -lt $buildStartedAt.AddSeconds(-2)) {
-    throw "NSIS 安装包时间早于本次构建，拒绝覆盖 latest 文件：$versionedInstaller"
-}
-
-Copy-Item -LiteralPath $versionedInstaller -Destination $latestInstaller -Force
-$versionedHash = (Get-FileHash -LiteralPath $versionedInstaller -Algorithm SHA256).Hash
-$latestHash = (Get-FileHash -LiteralPath $latestInstaller -Algorithm SHA256).Hash
-if ($versionedHash -ne $latestHash) {
-    throw '固定 NSIS 安装包与带版本号安装包哈希不一致。'
-}
-
-if (Test-ExistingChatObsidianInstallation) {
-    Write-Host '检测到已有 ChatObsidian 安装，自动覆盖升级。'
-    $installerProcess = Start-Process -FilePath $latestInstaller -ArgumentList @('/S') -WindowStyle Hidden -Wait -PassThru
-    if ($installerProcess.ExitCode -ne 0) {
-        throw "自动升级安装版失败（退出码 $($installerProcess.ExitCode)）。"
+    $exeInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($releaseExe)
+    if ([string]$exeInfo.ProductVersion -ne $version) {
+        throw "发布 exe 版本不匹配：实际 $($exeInfo.ProductVersion)，预期 $version"
     }
-    Write-Host '已安装版本升级完成。'
-} else {
-    Write-Host '未检测到已有安装，跳过自动安装；固定安装包已生成。'
-}
+    $installerFile = Get-Item -LiteralPath $versionedInstaller
+    if ($installerFile.LastWriteTime -lt $buildStartedAt.AddSeconds(-2)) { throw 'NSIS 安装包不是本次构建产物。' }
+    # This application currently embeds its frontend and has no external runtime resources.
+    $tauri = Get-Content -LiteralPath 'src-tauri/tauri.conf.json' -Raw -Encoding UTF8 | ConvertFrom-Json
+    foreach ($field in @('resources', 'externalBin')) {
+        if ($tauri.bundle.PSObject.Properties.Name -contains $field) { throw "新增 $field 后必须先扩展 ZIP 打包规则。" }
+    }
+    New-ReleaseCandidate $PSScriptRoot $version $releaseExe $versionedInstaller
 
-Write-Host ''
-Write-Host '发布构建完成：'
-Write-Host "  exe:       $releaseExe"
-Write-Host "  installer: $versionedInstaller"
-Write-Host "  latest:    $latestInstaller"
+    Write-Host '测试、构建、ZIP 解压及哈希验证通过，开始更新正式版。'
+    Stop-ChatObsidianProcesses
+    if (Test-ExistingChatObsidianInstallation) {
+        $installer = Resolve-OutputPath $PSScriptRoot '.build/release-stage/candidate/ChatObsidian-latest-setup.exe'
+        Write-Host '检测到已有安装，自动静默升级并保留应用数据。'
+        $process = Start-Process -FilePath $installer -ArgumentList @('/S') -WindowStyle Hidden -Wait -PassThru
+        if ($process.ExitCode -ne 0) { throw "自动升级失败（退出码 $($process.ExitCode)）；dist 保留旧版。" }
+    } else {
+        Write-Host '未检测到已有安装，跳过自动安装。'
+    }
+    Publish-ReleaseCandidate $PSScriptRoot $version
+
+    # Keep the verified app/ZIP/installer in dist; reclaim compiler and historical output.
+    Remove-OutputTree $PSScriptRoot '.build/cargo'
+    Remove-LegacyBuildOutputs $PSScriptRoot
+    Remove-OutputTree $PSScriptRoot 'node_modules.stale-after-relocation'
+    [void](Test-ReleaseDirectory $PSScriptRoot 'dist' $version)
+    Write-Host "发布完成：$PSScriptRoot\dist\ChatObsidian\chat-obsidian.exe"
+    Write-Host "压缩包：$PSScriptRoot\dist\ChatObsidian-windows-x64.zip"
+    Write-Host "安装包：$PSScriptRoot\dist\ChatObsidian-latest-setup.exe"
+    Write-Host '仅保留最新正式产物和前端预览文件；未自动启动应用。'
+} finally {
+    $env:CARGO_TARGET_DIR = $previousTarget
+    $env:NODE_ENV = $previousNodeEnv
+    $releaseLock.Dispose()
+}

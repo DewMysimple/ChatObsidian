@@ -1,6 +1,7 @@
 node_modules/
 node_modules.stale-after-relocation/
 dist/
+.build/
 src-tauri/target/
 src-tauri/target-*/
 .vite/

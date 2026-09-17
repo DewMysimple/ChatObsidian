@@ -90,7 +90,7 @@ export function Sidebar() {
         >
           <GearSix size={18} />
           <span>设置</span>
-          <span className="nav-version">0.1.15</span>
+          <span className="nav-version">0.1.16</span>
         </button>
         <div className="sidebar-user">
           <span className="user-avatar">我</span>

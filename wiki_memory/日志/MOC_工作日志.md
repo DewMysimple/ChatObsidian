@@ -15,6 +15,7 @@ supersedes: null
 
 | 时间 | 类型 | 目标 | 状态 | 主题 | 日志 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-17 | maintenance | - | archived | latest-only-release-layout | [[日志/2026-09-17-构建与正式产物目录隔离和历史清理.md|构建与正式产物目录隔离和历史清理]] |
 | 2026-09-17 | bug | - | archived | vite-rust-watcher-isolation | [[日志/2026-09-17-Vite排除Rust构建目录修复.md|Vite 排除 Rust 构建目录修复]] |
 | 2026-09-17 | feature | - | archived | local-database-workspace-redesign | [[日志/2026-09-17-Notion风格本地数据库工作台重做.md|Notion 风格本地数据库工作台重做]] |
 | 2026-09-16 | discussion | - | archived | architecture-review | [[日志/2026-09-16-工程架构审查.md|工程架构审查]] |

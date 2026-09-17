@@ -1,13 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ChatObsidian",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "identifier": "com.chatobsidian.desktop",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://127.0.0.1:1420",
     "beforeBuildCommand": "pnpm build",
-    "frontendDist": "../dist"
+    "frontendDist": "../.build/frontend"
   },
   "app": {
     "windows": [

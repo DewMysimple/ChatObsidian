@@ -2,7 +2,7 @@
 
 一个用于 Windows 的本地知识工作台。以 Notion 的数据库交互为参考，用画廊、表格与看板整理 Obsidian 仓库、项目和独立页面。
 
-**0.1.15 · React 19 + TypeScript + Vite 8 + Tauri 2 + Rust + SQLite**
+**0.1.16 · React 19 + TypeScript + Vite 8 + Tauri 2 + Rust + SQLite**
 
 ![ChatObsidian 仓库画廊（浏览器演示数据）](docs/screenshots/gallery.png)
 
@@ -53,7 +53,7 @@
 
 ## 使用
 
-1. 运行安装包，已有安装会覆盖升级并保留数据。
+1. 直接运行 `dist/ChatObsidian/chat-obsidian.exe`，或运行 `dist/ChatObsidian-latest-setup.exe` 安装；已有安装会覆盖升级并保留数据。需要分发时使用旁边的 `ChatObsidian-windows-x64.zip`。
 2. 首次启动读取登记仓库；需要补充发现时点击“扫描仓库”，或到设置中添加扫描目录。
 3. 点击卡片打开页面编辑器，修改封面、属性和说明后点击“保存页面”。卡片右下角的箭头执行增量打开，详情页提供两种打开方式。
 4. 在“灵感与项目”中添加独立页面，或从侧栏新建数据库。通过“视图设置 → 添加属性”扩展字段。
@@ -72,6 +72,7 @@ pnpm tauri:dev            # 桌面开发
 pnpm typecheck
 pnpm test
 pnpm test:e2e             # Playwright，使用本机 Microsoft Edge
+pnpm test:release         # 发布替换、回滚、压缩包校验与清理边界
 cargo test --manifest-path src-tauri/Cargo.toml
 python wiki_memory/工具/memory_lint.py check
 ```
@@ -82,13 +83,33 @@ python wiki_memory/工具/memory_lint.py check
 .\build-installer.ps1
 ```
 
-发布脚本检查三个版本号、运行前端/浏览器/Rust 验证与记忆 lint，只结束 ChatObsidian 进程，构建后生成：
+也可以运行 `pnpm release`。完整发布后，固定目录只保留最新正式版本：
 
-- `src-tauri/target/release/chat-obsidian.exe`
-- `src-tauri/target/release/bundle/nsis/ChatObsidian_0.1.15_x64-setup.exe`
-- `src-tauri/target/release/bundle/nsis/ChatObsidian-latest-setup.exe`
+```text
+dist/
+  ChatObsidian/
+    chat-obsidian.exe             日常运行入口，内嵌前端与应用代码
+    README.txt                   运行条件与数据位置
+  ChatObsidian-windows-x64.zip    上面完整应用目录的压缩包
+  ChatObsidian-latest-setup.exe   同版本 NSIS 安装包
+  release.json                  版本、构建时间、逐文件 SHA-256
+.build/
+  frontend/                     最新前端构建，仅用于打包/浏览器预览
+  test-results/                 最近一次浏览器测试结果
+  release.lock                  并发锁文件，文件存在不代表锁被占用
+```
 
-检测到已有安装时自动静默升级。任何测试、进程关闭、构建或安装失败立即中止；不会结束 `Obsidian.exe`，不会自动启动升级后的应用。发布二进制不纳入 Git。
+**`dist` 是发布目录，不再是 Vite 的输出目录。** `pnpm build` 只覆盖 `.build/frontend`，`pnpm preview` 也读取这里。Cargo 始终使用 `.build/cargo`，不会为版本创建 `target-v*`。原来的 `src-tauri/target/release/chat-obsidian.exe` 是编译目录中的可运行结果，不应作为稳定日常入口；现在正式应用来自 ZIP 的实际解压结果。
+
+发布顺序为：版本检查 → 记忆 lint、发布脚本/前端/浏览器/Rust 测试 → 原生构建与 NSIS 打包 → 生成 ZIP → 解压 → 对照构建结果、压缩包与解压文件验证 SHA-256 → 最后更新正式目录。测试或构建失败时不改动现有 `dist`，也不结束日常应用。替换期间保留一份临时旧目录，重命名失败自动恢复；进程中断后再次执行脚本也会恢复。成功后删掉临时旧目录，只保留最新版本。`dist` 中发现未知文件或清理路径含目录链接时会停止，不能把个人文件放在这些产物目录里。
+
+**只有进入最终更新阶段才关闭 ChatObsidian**，已有安装随后自动静默升级并保留数据；不会结束 `Obsidian.exe`，不会自动重启应用。Windows 不能可靠覆盖正在运行的程序文件，正式升级会有这一次短暂中断。日常使用 `dist` 或已安装应用，不要运行 `.build` 内的 exe。`pnpm tauri:dev` 与发布脚本使用同一把进程锁，避免开发编译和发布清理相互覆盖；先结束桌面开发再发布。桌面开发仍使用当前用户的应用数据，不应把它用于破坏性测试。
+
+每次发布前清理旧 Cargo 缓存，成功发布后再清空本次 `.build/cargo`，同时清除旧 `src-tauri/target`、`target-v数字.数字.数字`、`target-validation` 与迁移残留依赖目录。不保留 PDB、依赖库、旧安装包或重复的 Rust 缓存；**下一次 Rust 测试/编译会从头构建，耗时更长**。失败时最多保留固定位置的本次构建/候选文件供排查，下次发布覆盖；不会不断增加版本目录。源代码、当前 `node_modules`、应用数据、SQLite 快照和用户 Obsidian 仓库都不参与清理。
+
+解压版包含本应用完整运行文件，依赖系统的 WebView2，并非把用户数据也放在 exe 旁的“绿色数据版”。缺少 WebView2 的机器应使用安装包；其默认引导程序可能需要联网。[Tauri 官方 Windows 分发说明](https://v2.tauri.app/distribute/windows-installer/)解释了运行时安装方式；[Cargo 构建缓存说明](https://doc.rust-lang.org/cargo/reference/build-cache.html)说明了编译产物与缓存的区别。
+
+发布目录、编译输出和安装包全部被 Git 忽略。`pnpm tauri:build` 仅用于低层打包排查，不替代带验证、压缩、解压、替换与清理的完整发布命令。
 
 ## 工程结构
 
@@ -108,6 +129,10 @@ src-tauri/src/
   obsidian.rs       打开策略、URI 和路径验证
   windows_desktop.rs Windows 窗口、进程与虚拟桌面
 docs/               官方参考研究与本应用截图
+scripts/            发布目录管理与隔离回归测试
+.cargo/config.toml  固定 Cargo 输出目录，关闭额外增量缓存
+dist/               唯一日常正式版、ZIP、安装包（Git 忽略）
+.build/             开发/测试/发布暂存（Git 忽略）
 wiki_memory/        工程记忆与追加式工作日志
 ```
 

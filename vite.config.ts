@@ -4,12 +4,13 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,
+  build: { outDir: ".build/frontend", emptyOutDir: true },
   server: {
     host: "127.0.0.1",
     port: 1420,
     strictPort: true,
     // Rust owns this tree. Watching linked executables can raise EBUSY on Windows.
-    watch: { ignored: ["**/src-tauri/**"] },
+    watch: { ignored: ["**/src-tauri/**", "**/.build/**", "**/dist/**"] },
   },
   envPrefix: ["VITE_", "TAURI_"],
   test: {

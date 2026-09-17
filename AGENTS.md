@@ -57,10 +57,13 @@
 
 1. 检查版本一致性、记忆 lint、类型检查、前端/Playwright/Rust 测试。
 2. 只结束 ChatObsidian 自身进程，绝不结束 `Obsidian.exe`。
-3. 覆盖 `src-tauri/target/release/chat-obsidian.exe`。
-4. 保留版本号 NSIS 安装包，并覆盖 `src-tauri/target/release/bundle/nsis/ChatObsidian-latest-setup.exe`，校验两个包的 SHA-256 一致。
-5. 检测到已有安装后自动执行固定安装包升级，保留应用数据；后台安装窗口隐藏。
-6. 进程无法退出、文件仍被占用、测试/构建/安装失败时立即中止并报告。不自动重新启动 ChatObsidian。
+3. Vite 输出固定为 `.build/frontend`，Cargo 输出固定为 `.build/cargo`。禁止恢复 `dist` 前端输出或创建 `target-v*` 等按版本堆积的编译目录。
+4. 正式版固定为 `dist/ChatObsidian/chat-obsidian.exe`、`dist/ChatObsidian-windows-x64.zip`、`dist/ChatObsidian-latest-setup.exe` 和 `dist/release.json`。压缩完整运行文件，再实际解压作为正式应用；逐项验证源文件、ZIP、解压文件和安装包的 SHA-256 与版本。
+5. 验证、测试、编译、压缩、解压期间不改动当前 `dist`，不结束日常应用。全部成功后才处理 ChatObsidian 进程；已有安装自动静默升级，保留数据。替换失败恢复旧正式目录，进程中断后下次发布能恢复。
+6. 成功后删除暂存旧版、打包暂存、本次 Cargo 编译目录和历史 `src-tauri/target`、`target-v数字.数字.数字`、`target-validation`。只保留最新正式版/ZIP/安装包和固定位置的最新前端、测试输出；接受下一次 Rust 冷构建的时间成本。失败时保留固定暂存供排查，下次覆盖。
+7. 所有递归清理或移动必须先验证绝对路径位于工程允许的输出目录内，拒绝符号链接/目录联接和未知 `dist` 文件。禁止清理当前依赖、源代码、应用数据库、SQLite 快照或 Obsidian 仓库。没有用户授权不得清理全局工具链缓存。
+8. 发布与 `pnpm tauri:dev` 通过同一文件句柄锁互斥；运行 `pnpm test:release` 验证校验失败、回滚、中断恢复、并发与路径边界。新增 Tauri resources、externalBin 或运行时 DLL 时必须扩展完整 ZIP 的打包规则，不得漏资源。
+9. 进程无法退出、文件仍被占用、测试/构建/安装失败时立即中止并报告。不自动重新启动 ChatObsidian。Windows 更新运行中 exe 需要短暂退出，仅允许在最终更新阶段发生。
 
 发布产物位于 Git 忽略目录，不提交安装包或可执行文件。源图标及必要的界面截图可以提交。仅文档、排查或记忆更新无需重复发布，但仍需要日志、lint、提交和推送。
 
